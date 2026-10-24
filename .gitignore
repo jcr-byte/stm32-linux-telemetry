@@ -1,0 +1,8 @@
+# Linux build output
+stage1/uptime
+build/
+*.o
+
+# STM32CubeIDE build output (firmware)
+firmware/Debug/
+firmware/Release/
