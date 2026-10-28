@@ -18,6 +18,7 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
+#include <stdint.h>
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
@@ -31,6 +32,8 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
+#define LED_PERIOD_MS 500u
+#define SAMPLE_PERIOD_MS 1000u
 
 /* USER CODE END PD */
 
@@ -43,7 +46,8 @@
 /* Private variables ---------------------------------------------------------*/
 
 /* USER CODE BEGIN PV */
-
+static uint32_t led_last_tick = 0;
+static uint32_t last_sample_tick = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -101,11 +105,19 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
+    uint32_t now = HAL_GetTick();
 
+    if (now - led_last_tick >= LED_PERIOD_MS) {
+      led_last_tick += LED_PERIOD_MS;
+      BSP_LED_Toggle(LED2);
+    }
+
+    if (now - last_sample_tick >= SAMPLE_PERIOD_MS) {
+      last_sample_tick += SAMPLE_PERIOD_MS;
+    }
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
-	  BSP_LED_Off(LED2);
   }
   /* USER CODE END 3 */
 }
