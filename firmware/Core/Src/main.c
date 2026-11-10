@@ -18,10 +18,10 @@
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include <stdint.h>
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdio.h>
 
 /* USER CODE END Includes */
 
@@ -45,6 +45,10 @@
 
 /* Private variables ---------------------------------------------------------*/
 
+I2C_HandleTypeDef hi2c1;
+
+UART_HandleTypeDef huart2;
+
 /* USER CODE BEGIN PV */
 static uint32_t led_last_tick = 0;
 static uint32_t last_sample_tick = 0;
@@ -53,12 +57,69 @@ static uint32_t last_sample_tick = 0;
 /* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
+static void MX_I2C1_Init(void);
+static void MX_USART2_UART_Init(void);
 /* USER CODE BEGIN PFP */
 
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
+#define BME280_REG_CHIP_ID 0xD0u
+#define BME280_CHIP_ID     0x60u
+#define BMP280_CHIP_ID     0x58u
+
+/* Probe both possible BME280 addresses and report the chip ID over UART. */
+static void sensor_check(void)
+{
+  char msg[80];
+  int n;
+  uint8_t addr_found = 0;
+  int bus_reset = 0;
+
+  /* A glitch on SCL/SDA can leave the peripheral's BUSY flag stuck, which makes
+     every later transfer time out. HAL_I2C_Init() software-resets the peripheral. */
+  if (__HAL_I2C_GET_FLAG(&hi2c1, I2C_FLAG_BUSY)) {
+    HAL_I2C_Init(&hi2c1);
+    bus_reset = 1;
+  }
+
+  for (uint8_t addr = 0x76; addr <= 0x77; addr++) {
+    if (HAL_I2C_IsDeviceReady(&hi2c1, addr << 1, 3, 10) == HAL_OK) {
+      addr_found = addr;
+      break;
+    }
+  }
+
+  if (addr_found == 0) {
+    /* Idle I2C lines should read high (1) through the pull-ups. */
+    int scl = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_8) == GPIO_PIN_SET;
+    int sda = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_9) == GPIO_PIN_SET;
+    int others = 0;
+
+    for (uint8_t addr = 0x08; addr <= 0x77; addr++) {
+      if (HAL_I2C_IsDeviceReady(&hi2c1, addr << 1, 1, 2) == HAL_OK) {
+        others = addr;
+        break;
+      }
+    }
+
+    n = snprintf(msg, sizeof msg, "No BME280. SCL=%d SDA=%d err=0x%lX other=0x%02X bus_reset=%d\r\n",
+                 scl, sda, (unsigned long)hi2c1.ErrorCode, others, bus_reset);
+  } else {
+    uint8_t id = 0;
+    if (HAL_I2C_Mem_Read(&hi2c1, addr_found << 1, BME280_REG_CHIP_ID,
+                         I2C_MEMADD_SIZE_8BIT, &id, 1, 100) != HAL_OK) {
+      n = snprintf(msg, sizeof msg, "Found 0x%02X but chip ID read failed\r\n", addr_found);
+    } else {
+      n = snprintf(msg, sizeof msg, "Found 0x%02X, chip ID 0x%02X (%s)\r\n", addr_found, id,
+                   id == BME280_CHIP_ID ? "BME280" :
+                   id == BMP280_CHIP_ID ? "BMP280 - no humidity" : "unknown");
+    }
+  }
+
+  HAL_UART_Transmit(&huart2, (uint8_t *)msg, (uint16_t)n, 100);
+}
 
 /* USER CODE END 0 */
 
@@ -91,6 +152,8 @@ int main(void)
 
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
+  MX_I2C1_Init();
+  MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
 
   /* USER CODE END 2 */
@@ -114,6 +177,7 @@ int main(void)
 
     if (now - last_sample_tick >= SAMPLE_PERIOD_MS) {
       last_sample_tick += SAMPLE_PERIOD_MS;
+      sensor_check();
     }
     /* USER CODE END WHILE */
 
@@ -170,13 +234,79 @@ void SystemClock_Config(void)
 }
 
 /**
+  * @brief I2C1 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_I2C1_Init(void)
+{
+
+  /* USER CODE BEGIN I2C1_Init 0 */
+
+  /* USER CODE END I2C1_Init 0 */
+
+  /* USER CODE BEGIN I2C1_Init 1 */
+
+  /* USER CODE END I2C1_Init 1 */
+  hi2c1.Instance = I2C1;
+  hi2c1.Init.ClockSpeed = 100000;
+  hi2c1.Init.DutyCycle = I2C_DUTYCYCLE_2;
+  hi2c1.Init.OwnAddress1 = 0;
+  hi2c1.Init.AddressingMode = I2C_ADDRESSINGMODE_7BIT;
+  hi2c1.Init.DualAddressMode = I2C_DUALADDRESS_DISABLE;
+  hi2c1.Init.OwnAddress2 = 0;
+  hi2c1.Init.GeneralCallMode = I2C_GENERALCALL_DISABLE;
+  hi2c1.Init.NoStretchMode = I2C_NOSTRETCH_DISABLE;
+  if (HAL_I2C_Init(&hi2c1) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN I2C1_Init 2 */
+
+  /* USER CODE END I2C1_Init 2 */
+
+}
+
+/**
+  * @brief USART2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_USART2_UART_Init(void)
+{
+
+  /* USER CODE BEGIN USART2_Init 0 */
+
+  /* USER CODE END USART2_Init 0 */
+
+  /* USER CODE BEGIN USART2_Init 1 */
+
+  /* USER CODE END USART2_Init 1 */
+  huart2.Instance = USART2;
+  huart2.Init.BaudRate = 115200;
+  huart2.Init.WordLength = UART_WORDLENGTH_8B;
+  huart2.Init.StopBits = UART_STOPBITS_1;
+  huart2.Init.Parity = UART_PARITY_NONE;
+  huart2.Init.Mode = UART_MODE_TX_RX;
+  huart2.Init.HwFlowCtl = UART_HWCONTROL_NONE;
+  huart2.Init.OverSampling = UART_OVERSAMPLING_16;
+  if (HAL_UART_Init(&huart2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN USART2_Init 2 */
+
+  /* USER CODE END USART2_Init 2 */
+
+}
+
+/**
   * @brief GPIO Initialization Function
   * @param None
   * @retval None
   */
 static void MX_GPIO_Init(void)
 {
-  GPIO_InitTypeDef GPIO_InitStruct = {0};
   /* USER CODE BEGIN MX_GPIO_Init_1 */
 
   /* USER CODE END MX_GPIO_Init_1 */
@@ -186,14 +316,6 @@ static void MX_GPIO_Init(void)
   __HAL_RCC_GPIOH_CLK_ENABLE();
   __HAL_RCC_GPIOA_CLK_ENABLE();
   __HAL_RCC_GPIOB_CLK_ENABLE();
-
-  /*Configure GPIO pins : USART_TX_Pin USART_RX_Pin */
-  GPIO_InitStruct.Pin = USART_TX_Pin|USART_RX_Pin;
-  GPIO_InitStruct.Mode = GPIO_MODE_AF_PP;
-  GPIO_InitStruct.Pull = GPIO_NOPULL;
-  GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_VERY_HIGH;
-  GPIO_InitStruct.Alternate = GPIO_AF7_USART2;
-  HAL_GPIO_Init(GPIOA, &GPIO_InitStruct);
 
   /* USER CODE BEGIN MX_GPIO_Init_2 */
 
