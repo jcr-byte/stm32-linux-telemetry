@@ -21,7 +21,7 @@
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
-#include <stdio.h>
+#include "app.h"
 
 /* USER CODE END Includes */
 
@@ -32,8 +32,6 @@
 
 /* Private define ------------------------------------------------------------*/
 /* USER CODE BEGIN PD */
-#define LED_PERIOD_MS 500u
-#define SAMPLE_PERIOD_MS 1000u
 
 /* USER CODE END PD */
 
@@ -50,8 +48,7 @@ I2C_HandleTypeDef hi2c1;
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
-static uint32_t led_last_tick = 0;
-static uint32_t last_sample_tick = 0;
+
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -65,61 +62,7 @@ static void MX_USART2_UART_Init(void);
 
 /* Private user code ---------------------------------------------------------*/
 /* USER CODE BEGIN 0 */
-#define BME280_REG_CHIP_ID 0xD0u
-#define BME280_CHIP_ID     0x60u
-#define BMP280_CHIP_ID     0x58u
 
-/* Probe both possible BME280 addresses and report the chip ID over UART. */
-static void sensor_check(void)
-{
-  char msg[80];
-  int n;
-  uint8_t addr_found = 0;
-  int bus_reset = 0;
-
-  /* A glitch on SCL/SDA can leave the peripheral's BUSY flag stuck, which makes
-     every later transfer time out. HAL_I2C_Init() software-resets the peripheral. */
-  if (__HAL_I2C_GET_FLAG(&hi2c1, I2C_FLAG_BUSY)) {
-    HAL_I2C_Init(&hi2c1);
-    bus_reset = 1;
-  }
-
-  for (uint8_t addr = 0x76; addr <= 0x77; addr++) {
-    if (HAL_I2C_IsDeviceReady(&hi2c1, addr << 1, 3, 10) == HAL_OK) {
-      addr_found = addr;
-      break;
-    }
-  }
-
-  if (addr_found == 0) {
-    /* Idle I2C lines should read high (1) through the pull-ups. */
-    int scl = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_8) == GPIO_PIN_SET;
-    int sda = HAL_GPIO_ReadPin(GPIOB, GPIO_PIN_9) == GPIO_PIN_SET;
-    int others = 0;
-
-    for (uint8_t addr = 0x08; addr <= 0x77; addr++) {
-      if (HAL_I2C_IsDeviceReady(&hi2c1, addr << 1, 1, 2) == HAL_OK) {
-        others = addr;
-        break;
-      }
-    }
-
-    n = snprintf(msg, sizeof msg, "No BME280. SCL=%d SDA=%d err=0x%lX other=0x%02X bus_reset=%d\r\n",
-                 scl, sda, (unsigned long)hi2c1.ErrorCode, others, bus_reset);
-  } else {
-    uint8_t id = 0;
-    if (HAL_I2C_Mem_Read(&hi2c1, addr_found << 1, BME280_REG_CHIP_ID,
-                         I2C_MEMADD_SIZE_8BIT, &id, 1, 100) != HAL_OK) {
-      n = snprintf(msg, sizeof msg, "Found 0x%02X but chip ID read failed\r\n", addr_found);
-    } else {
-      n = snprintf(msg, sizeof msg, "Found 0x%02X, chip ID 0x%02X (%s)\r\n", addr_found, id,
-                   id == BME280_CHIP_ID ? "BME280" :
-                   id == BMP280_CHIP_ID ? "BMP280 - no humidity" : "unknown");
-    }
-  }
-
-  HAL_UART_Transmit(&huart2, (uint8_t *)msg, (uint16_t)n, 100);
-}
 
 /* USER CODE END 0 */
 
@@ -155,7 +98,7 @@ int main(void)
   MX_I2C1_Init();
   MX_USART2_UART_Init();
   /* USER CODE BEGIN 2 */
-
+  app_init(&hi2c1, &huart2);
   /* USER CODE END 2 */
 
   /* Initialize leds */
@@ -168,17 +111,7 @@ int main(void)
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-    uint32_t now = HAL_GetTick();
-
-    if (now - led_last_tick >= LED_PERIOD_MS) {
-      led_last_tick += LED_PERIOD_MS;
-      BSP_LED_Toggle(LED2);
-    }
-
-    if (now - last_sample_tick >= SAMPLE_PERIOD_MS) {
-      last_sample_tick += SAMPLE_PERIOD_MS;
-      sensor_check();
-    }
+    app_tick(HAL_GetTick());
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
