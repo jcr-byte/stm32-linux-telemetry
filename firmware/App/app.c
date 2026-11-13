@@ -1,6 +1,7 @@
 #include "app.h"
 #include <stdio.h>
 #include "stm32f4xx_nucleo.h"
+#include "bme280.h"
 
 #define LED_PERIOD_MS    500u
 #define SAMPLE_PERIOD_MS 1000u
@@ -14,6 +15,9 @@ static UART_HandleTypeDef *app_uart;
 
 static uint32_t led_last_tick;
 static uint32_t sample_last_tick;
+
+static bme280_t sensor;
+static int sensor_ok;
 
 static void sensor_check(void)
 {
@@ -66,10 +70,37 @@ static void sensor_check(void)
   HAL_UART_Transmit(app_uart, (uint8_t *)msg, (uint16_t)n, 100);
 }
 
+/* Integer formatting: newlib-nano's printf has no %f by default. */
+static void sensor_report(void)
+{
+  char msg[80];
+  int n;
+  bme280_meas_t m;
+  bme280_status_t st = bme280_read(&sensor, &m);
+
+  if (st != BME280_OK) {
+    n = snprintf(msg, sizeof msg, "BME280 read failed (%d)\r\n", (int)st);
+    sensor_ok = 0;   /* re-init next period; a power glitch also loses the config */
+  } else {
+    int32_t t = m.temp_centi_c;
+    const char *sign = t < 0 ? "-" : "";
+    if (t < 0)
+      t = -t;
+    n = snprintf(msg, sizeof msg, "T=%s%ld.%02ld C  P=%lu.%02lu hPa  H=%lu.%03lu %%RH\r\n",
+                 sign, (long)(t / 100), (long)(t % 100),
+                 (unsigned long)(m.press_pa / 100), (unsigned long)(m.press_pa % 100),
+                 (unsigned long)(m.hum_milli_pct / 1000), (unsigned long)(m.hum_milli_pct % 1000));
+  }
+
+  HAL_UART_Transmit(app_uart, (uint8_t *)msg, (uint16_t)n, 100);
+}
+
 void app_init(I2C_HandleTypeDef *hi2c, UART_HandleTypeDef *huart) 
 {
   app_i2c = hi2c;
   app_uart = huart;
+
+  sensor_ok = bme280_init(&sensor, app_i2c) == BME280_OK;
 
   led_last_tick = HAL_GetTick();
   sample_last_tick = led_last_tick;
@@ -85,7 +116,16 @@ void app_tick(uint32_t now)
 
   if (now - sample_last_tick >= SAMPLE_PERIOD_MS) {
     sample_last_tick += SAMPLE_PERIOD_MS;
-    sensor_check();
+
+    /* Retry init each period so a loose wire recovers without a reset. After a
+       successful init, skip this period's read: the first measurement isn't ready yet. */
+    if (sensor_ok) {
+      sensor_report();
+    } else {
+      sensor_ok = bme280_init(&sensor, app_i2c) == BME280_OK;
+      if (!sensor_ok)
+        sensor_check();
+    }
   }
 }
 

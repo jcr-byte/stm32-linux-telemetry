@@ -8,10 +8,15 @@
 #define REG_STATUS    0xF3u
 #define REG_CTRL_MEAS 0xF4u
 #define REG_CONFIG    0xF5u
+#define REG_DATA      0xF7u
 
 #define CHIP_ID          0x60u
 #define RESET_CMD        0xB6u
 #define STATUS_IM_UPDATE 0x01u   /* set while NVM calibration is copied to registers */
+
+/* Values the data registers hold until a measurement has been written. */
+#define ADC_T_SKIPPED 0x80000
+#define ADC_H_SKIPPED 0x8000
 
 #define I2C_TIMEOUT_MS   100u
 #define RESET_TIMEOUT_MS 10u
@@ -77,5 +82,22 @@ bme280_status_t bme280_init(bme280_t *dev, I2C_HandleTypeDef *hi2c)
       reg_write(dev, REG_CTRL_MEAS, 0x27) != HAL_OK)    /* temp x1, press x1, normal mode */
     return BME280_ERR_I2C;
 
+  return BME280_OK;
+}
+
+bme280_status_t bme280_read(bme280_t *dev, bme280_meas_t *out)
+{
+  uint8_t d[BME280_RAW_LEN];
+  bme280_raw_t raw;
+
+  /* One burst read, so all three values come from the same measurement. */
+  if (reg_read(dev, REG_DATA, d, sizeof d) != HAL_OK)
+    return BME280_ERR_I2C;
+
+  bme280_parse_raw(d, &raw);
+  if (raw.adc_T == ADC_T_SKIPPED || raw.adc_H == ADC_H_SKIPPED)
+    return BME280_ERR_NO_DATA;
+
+  bme280_compensate(&dev->calib, &raw, out);
   return BME280_OK;
 }

@@ -10,6 +10,7 @@ typedef enum {
   BME280_ERR_CHIP_ID,     /* responded, but ID != 0x60 */
   BME280_ERR_I2C,         /* transfer failed mid-operation */
   BME280_ERR_TIMEOUT,     /* reset / NVM copy didn't finish */
+  BME280_ERR_NO_DATA,     /* no measurement yet, or humidity not enabled */
 } bme280_status_t;
 
 typedef struct {
