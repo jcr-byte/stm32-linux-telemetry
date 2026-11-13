@@ -45,3 +45,58 @@ void bme280_parse_raw(const uint8_t d[BME280_RAW_LEN], bme280_raw_t *out)
   out->adc_T = ((int32_t)d[3] << 12) | ((int32_t)d[4] << 4) | (d[5] >> 4);
   out->adc_H = ((int32_t)d[6] << 8)  |  d[7];
 }
+
+/* Compensation formulas from the datasheet (section 4.2.3), integer versions.
+   t_fine carries the temperature into the pressure and humidity formulas.
+   Left shifts of possibly negative values are written as multiplies to avoid UB. */
+static int32_t comp_temp(const bme280_calib_t *c, int32_t adc_T, int32_t *t_fine)
+{
+  int32_t var1 = ((((adc_T >> 3) - ((int32_t)c->dig_T1 << 1))) * c->dig_T2) >> 11;
+  int32_t var2 = (((((adc_T >> 4) - c->dig_T1) * ((adc_T >> 4) - c->dig_T1)) >> 12) *
+                  c->dig_T3) >> 14;
+  *t_fine = var1 + var2;
+  return (*t_fine * 5 + 128) >> 8;              /* 0.01 °C */
+}
+
+/* Returns Pa in Q24.8 (value / 256 = Pa). */
+static uint32_t comp_press(const bme280_calib_t *c, int32_t adc_P, int32_t t_fine)
+{
+  int64_t var1 = (int64_t)t_fine - 128000;
+  int64_t var2 = var1 * var1 * c->dig_P6;
+  var2 += (var1 * c->dig_P5) * (1LL << 17);
+  var2 += (int64_t)c->dig_P4 * (1LL << 35);
+  var1 = ((var1 * var1 * c->dig_P3) >> 8) + ((var1 * c->dig_P2) * (1LL << 12));
+  var1 = (((1LL << 47) + var1) * c->dig_P1) >> 33;
+  if (var1 == 0)
+    return 0;                                   /* avoid divide by zero */
+
+  int64_t p = 1048576 - adc_P;
+  p = ((p * (1LL << 31)) - var2) * 3125 / var1;
+  var1 = ((int64_t)c->dig_P9 * (p >> 13) * (p >> 13)) >> 25;
+  var2 = ((int64_t)c->dig_P8 * p) >> 19;
+  p = ((p + var1 + var2) >> 8) + ((int64_t)c->dig_P7 * 16);
+  return (uint32_t)p;
+}
+
+/* Returns %RH in Q22.10 (value / 1024 = %RH). */
+static uint32_t comp_hum(const bme280_calib_t *c, int32_t adc_H, int32_t t_fine)
+{
+  int32_t v = t_fine - 76800;
+  v = (((((adc_H << 14) - (c->dig_H4 * (1 << 20)) - (c->dig_H5 * v)) + 16384) >> 15) *
+       (((((((v * c->dig_H6) >> 10) * (((v * c->dig_H3) >> 11) + 32768)) >> 10) + 2097152) *
+         c->dig_H2 + 8192) >> 14));
+  v -= ((((v >> 15) * (v >> 15)) >> 7) * c->dig_H1) >> 4;
+  if (v < 0)         v = 0;
+  if (v > 419430400) v = 419430400;             /* 100 %RH */
+  return (uint32_t)(v >> 12);
+}
+
+void bme280_compensate(const bme280_calib_t *cal, const bme280_raw_t *raw,
+                       bme280_meas_t *out)
+{
+  int32_t t_fine;
+
+  out->temp_centi_c  = comp_temp(cal, raw->adc_T, &t_fine);
+  out->press_pa      = (comp_press(cal, raw->adc_P, t_fine) + 128) >> 8;
+  out->hum_milli_pct = (comp_hum(cal, raw->adc_H, t_fine) * 1000u) >> 10;
+}
