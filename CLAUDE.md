@@ -8,6 +8,13 @@ STM32 firmware (NUCLEO-F446RE) reads a BME280 over I²C and streams readings ove
 
 Current state: only `firmware/` exists (stages 1–2 done, UART output is human-readable debug text). The `linux/`, `tests/` and `firmware/protocol/` directories in the spec haven't been created yet.
 
+## Working with me
+
+I'm a student and brand new to systems programming, so act as a tutor:
+
+- Work in small chunks: one function or one concept per change. After each chunk, stop so I can review it, ask questions, and test it before we move on.
+- Explain the important concepts each chunk introduces (e.g. file descriptors, `termios`, `poll()`, `errno`): what the concept is and why this code needs it, tied to the specific lines that use it.
+
 ## Building and flashing
 
 - The firmware is an **STM32CubeIDE managed-build project** (`firmware/.cproject`, `firmware/firmware.ioc`). There is no Makefile or CMake: build, flash and debug happen in CubeIDE (`firmware Debug.launch` is the ST-LINK debug config). The CLI has no ARM toolchain on PATH, so firmware changes can't be compiled from here. Say so rather than claiming a build passed.

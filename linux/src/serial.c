@@ -3,6 +3,7 @@
 
 #include <errno.h>
 #include <fcntl.h>
+#include <poll.h>
 #include <sys/ioctl.h>
 #include <termios.h>
 #include <unistd.h>
@@ -42,4 +43,43 @@ fail:;
   close(fd);
   errno = saved;
   return -1;
+}
+
+serial_result_t serial_read(int fd, void *buf, size_t len, int timeout_ms,
+                            size_t *n_out)
+{
+  struct pollfd pfd = { .fd = fd, .events = POLLIN };
+
+  int rc = poll(&pfd, 1, timeout_ms);
+  if (rc < 0)
+    return errno == EINTR ? SERIAL_TIMEOUT : SERIAL_ERROR;
+  if (rc == 0)
+    return SERIAL_TIMEOUT;
+
+  if (pfd.revents & POLLNVAL) {
+    errno = EBADF;
+    return SERIAL_ERROR;
+  }
+
+  /* Read even on POLLHUP/POLLERR: bytes may still be buffered, and read()'s
+     result tells us whether the device is really gone. */
+  ssize_t n = read(fd, buf, len);
+  if (n > 0) {
+    *n_out = (size_t)n;
+    return SERIAL_DATA;
+  }
+  if (n == 0)   /* poll() said ready but nothing came: the tty has hung up */
+    return SERIAL_DISCONNECTED;
+
+  switch (errno) {
+  case EAGAIN:
+  case EINTR:
+    return SERIAL_TIMEOUT;
+  case EIO:
+  case ENXIO:
+  case ENODEV:
+    return SERIAL_DISCONNECTED;
+  default:
+    return SERIAL_ERROR;
+  }
 }
