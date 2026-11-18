@@ -23,7 +23,7 @@ int serial_open(const char *path)
   if (tcgetattr(fd, &tio) < 0)
     goto fail;
 
-  cfmakeraw(&tio);   /* 8 data bits, no parity, no echo, no line editing or CR/LF translation */
+  cfmakeraw(&tio);
   tio.c_cflag &= ~(CSTOPB | CRTSCTS);
   tio.c_cflag |= CLOCAL | CREAD;
   tio.c_cc[VMIN] = 0;   /* never block in read(); serial_read() waits in poll() */
@@ -82,4 +82,10 @@ serial_result_t serial_read(int fd, void *buf, size_t len, int timeout_ms,
   default:
     return SERIAL_ERROR;
   }
+}
+
+void serial_close(int fd)
+{
+  if (fd >= 0)
+    close(fd);
 }
