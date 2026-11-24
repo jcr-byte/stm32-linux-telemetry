@@ -15,6 +15,7 @@ endif()
 add_executable(telemetry
   src/main.c
   src/serial.c
+  src/linebuf.c
 )
 
 target_compile_options(telemetry PRIVATE -Wall -Wextra -Wpedantic)
