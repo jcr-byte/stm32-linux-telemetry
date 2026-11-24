@@ -1,4 +1,5 @@
 #include "serial.h"
+#include "linebuf.h"
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -15,15 +16,24 @@ int main(int argc, char *argv[])
   fprintf(stderr, "opened %s\n", path);
 
   char buf[256];
+  linebuf_t lb;
+  linebuf_init(&lb);
   for (;;) {
     size_t n;
     serial_result_t r = serial_read(fd, buf, sizeof buf, 1000, &n);
 
     switch (r) {
     case SERIAL_DATA:
-      printf("[%zu] ", n);
-      fwrite(buf, 1, n, stdout);
-      fflush(stdout);
+      for (size_t i = 0; i < n; ++i) {
+          const char *line;
+          linebuf_result_t r2 = linebuf_feed(&lb, buf[i], &line);
+          if (r2 == LINEBUF_LINE) {
+            fprintf(stdout, "%s\n", line);
+          }
+          if (r2 == LINEBUF_OVERFLOW) {
+            fprintf(stderr, "overflow\n");
+          }
+        }
       break;
     case SERIAL_TIMEOUT:
       fprintf(stderr, "(timeout)\n");

@@ -82,14 +82,9 @@ static void sensor_report(void)
     n = snprintf(msg, sizeof msg, "BME280 read failed (%d)\r\n", (int)st);
     sensor_ok = 0;   /* re-init next period; a power glitch also loses the config */
   } else {
-    int32_t t = m.temp_centi_c;
-    const char *sign = t < 0 ? "-" : "";
-    if (t < 0)
-      t = -t;
-    n = snprintf(msg, sizeof msg, "T=%s%ld.%02ld C  P=%lu.%02lu hPa  H=%lu.%03lu %%RH\r\n",
-                 sign, (long)(t / 100), (long)(t % 100),
-                 (unsigned long)(m.press_pa / 100), (unsigned long)(m.press_pa % 100),
-                 (unsigned long)(m.hum_milli_pct / 1000), (unsigned long)(m.hum_milli_pct % 1000));
+    n = snprintf(msg, sizeof msg, "TEMP=%ld,HUM=%lu,PRESS=%lu\r\n",
+                 (long)m.temp_centi_c, (unsigned long)m.hum_milli_pct,
+                 (unsigned long)m.press_pa);
   }
 
   HAL_UART_Transmit(app_uart, (uint8_t *)msg, (uint16_t)n, 100);
